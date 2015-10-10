@@ -4,7 +4,7 @@
  * at http://sourceforge.net/projects/drjava
  *
  * Copyright (C) 2001-2002 JavaPLT group at Rice University (javaplt@rice.edu)
- * 
+ *
  * DrJava is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -40,13 +40,14 @@ END_COPYRIGHT_BLOCK*/
 package edu.rice.cs.drjava.model.compiler;
 
 import java.io.File;
+import java.io.Serializable;
 
 /**
  * A class to represent compiler errors.  Having this class allows DrJava
  * to make the errors as legible as possible.
- * @version $Id: CompilerError.java,v 1.10 2002/02/08 14:22:19 brianstoler Exp $
+ * @version $Id: CompilerError.java,v 1.14 2003/06/12 22:21:50 centgraf Exp $
  */
-public class CompilerError implements Comparable {
+public class CompilerError implements Comparable, Serializable {
   private File _file;
 
   /** zero-based line number. */
@@ -58,12 +59,18 @@ public class CompilerError implements Comparable {
   private boolean _isWarning;
 
   /**
+   * This boolean is true when the CompilerError does not
+   * have a location (lineNumber is -1)
+   */
+  private boolean _noLocation;
+
+  /**
    * Constructor.
-   * @param     File file the file where the error occurred
-   * @param     int lineNumber the line number of the error
-   * @param     int startColumn the starting column of the error
-   * @param     String message  the error message
-   * @param     boolean isWarning true if the error is a warning
+   * @param     file the file where the error occurred
+   * @param     lineNumber the line number of the error
+   * @param     startColumn the starting column of the error
+   * @param     message  the error message
+   * @param     isWarning true if the error is a warning
    */
   public CompilerError(File file, int lineNumber, int startColumn, String message,
       boolean isWarning) {
@@ -72,19 +79,32 @@ public class CompilerError implements Comparable {
     _startColumn = startColumn;
     _message = message;
     _isWarning = isWarning;
+    if (lineNumber < 0){
+      _noLocation = true;
+    }
+  }
+
+  /**
+   * Constructor for a CompilerError with an associated file but no location in the source
+   */
+  public CompilerError(File file, String message, boolean isWarning){
+    this(file, -1, -1, message, isWarning);
   }
 
   /**
    * Constructor for CompilerErrors without files.
-   * @param     String message  the error message
-   * @param     boolean isWarning true if the error is a warning
+   * @param     message  the error message
+   * @param     isWarning true if the error is a warning
    */
   public CompilerError(String message, boolean isWarning) {
-    _file = null;
-    _lineNumber = -1;
-    _startColumn = -1;
-    _message = message;
-    _isWarning = isWarning;
+    this(null, message, isWarning);
+  }
+
+  /**
+   * This function returns true if and only if the given error has no location
+   */
+  public boolean hasNoLocation(){
+    return _noLocation;
   }
 
   /**
@@ -92,7 +112,7 @@ public class CompilerError implements Comparable {
    * @return the error as a String
    */
   public String toString() {
-    return  "CompilerError(file=" + _file.getAbsolutePath() + ", line=" +
+    return  this.getClass().toString() + "(file=" + fileName() + ", line=" +
       _lineNumber + ", col=" + _startColumn + ", msg=" + _message + ")";
   }
 
@@ -114,8 +134,10 @@ public class CompilerError implements Comparable {
   }
 
   /**
-   * Gets the line number of the error.
-   * @return the line number
+   * Gets the zero-based line number of the error.
+   * NOTE: javac/javadoc produces zero-based line numbers internally, but
+   * prints one-based line numbers to the command line.
+   * @return the zero-based line number
    */
   public int lineNumber() {
     return  _lineNumber;
@@ -138,6 +160,33 @@ public class CompilerError implements Comparable {
   }
 
   /**
+   * This function returns a message telling the file this error is from
+   * appropriate to display to a user, indicating if there is no file
+   * associated with this error
+   */
+  public String getFileMessage(){
+    if (_file == null){
+      return "(no associated file)";
+    } else {
+      return fileName();
+    }
+  }
+
+  /**
+   * This function returns a message telling the line this error is from
+   * appropriate to display to a user, indicating if there is no file
+   * associated with this error.  This is adjusted to show one-based numbers,
+   * since internally we store a zero-based index.
+   */
+  public String getLineMessage(){
+    if (_file == null || this._lineNumber < 0){
+      return "(no source location)";
+    } else {
+      return "" + (_lineNumber + 1);
+    }
+  }
+
+  /**
    * Determines if the error is a warning.
    * @return true if the error is a warning.
    */
@@ -147,8 +196,8 @@ public class CompilerError implements Comparable {
 
   /**
    * Compares by file, then by line, then by column.
-   * Errors without files are considered equal, but less
-   * than any errors with files.
+   * Errors without files are considered equal, but less than any errors with
+   * files.  Warnings are considered greater than errors, all else equal.
    */
   public int compareTo(Object o) {
     CompilerError other = (CompilerError)o;
@@ -174,7 +223,9 @@ public class CompilerError implements Comparable {
     else {
       // My file is null
       if (other.file() == null) {
-        return 0;
+        // All else equal.
+        //                        I'm a warning.           I'm not a warning.
+        return (this._isWarning? (other._isWarning? 0:1):(other._isWarning? -1:0));
       }
       else {
         // Errors without files are smaller
@@ -190,7 +241,9 @@ public class CompilerError implements Comparable {
   private int compareByPosition(CompilerError other) {
     // Compare by line unless lines are equal
     if (_lineNumber == other._lineNumber) {
-      return  _startColumn - other._startColumn;
+      int byCol = _startColumn - other._startColumn;
+      //                        I'm a warning.               I'm not a warning.
+      return (this._isWarning? (other._isWarning? byCol:1):(other._isWarning? -1:byCol));
     }
     else {
       return  _lineNumber - other._lineNumber;

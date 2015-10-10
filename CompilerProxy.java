@@ -4,7 +4,7 @@
  * at http://sourceforge.net/projects/drjava
  *
  * Copyright (C) 2001-2002 JavaPLT group at Rice University (javaplt@rice.edu)
- * 
+ *
  * DrJava is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -44,10 +44,15 @@ import java.net.URL;
 
 import edu.rice.cs.drjava.DrJava;
 import edu.rice.cs.util.classloader.StickyClassLoader;
+import edu.rice.cs.drjava.config.OptionConstants;
+import edu.rice.cs.drjava.config.FileOption;
+import edu.rice.cs.util.UnexpectedException;
+import java.util.Vector;
+import java.util.Enumeration;
 
 /**
- * A compiler interface to search a given 
- * @version $Id: CompilerProxy.java,v 1.5 2002/02/25 16:31:33 brianstoler Exp $
+ * A compiler interface to search a given
+ * @version $Id: CompilerProxy.java,v 1.16 2003/06/28 04:33:16 centgraf Exp $
  */
 public class CompilerProxy implements CompilerInterface {
   /**
@@ -88,6 +93,8 @@ public class CompilerProxy implements CompilerInterface {
   }
 
   private void _recreateCompiler() {
+    File collectionsPath = DrJava.getConfig().getSetting(OptionConstants.JSR14_COLLECTIONSPATH);
+
     StickyClassLoader loader =
       new StickyClassLoader(_newLoader,
                             getClass().getClassLoader(),
@@ -96,12 +103,36 @@ public class CompilerProxy implements CompilerInterface {
     try {
       Class c = loader.loadClass(_className);
       _realCompiler = CompilerRegistry.createCompiler(c);
+
+      StringBuffer newclasspath = new StringBuffer();
+      Vector<File> cp = DrJava.getConfig().getSetting(OptionConstants.EXTRA_CLASSPATH);
+      //if(cp!=null) {
+        Enumeration<File> en = cp.elements();
+        while(en.hasMoreElements()) {
+          newclasspath.append(System.getProperty("path.separator")).append(en.nextElement().getAbsolutePath());
+        }
+      //}
+      _realCompiler.setExtraClassPath(newclasspath.toString());
+
+      boolean allowAssertions =
+        DrJava.getConfig().getSetting(OptionConstants.JAVAC_ALLOW_ASSERT).booleanValue();
+      _realCompiler.setAllowAssertions(allowAssertions);
+
+      String compilerClass = _realCompiler.getClass().getName();
+      if ((compilerClass.equals("edu.rice.cs.drjava.model.compiler.JSR14v10Compiler") ||
+           compilerClass.equals("edu.rice.cs.drjava.model.compiler.JSR14v12Compiler") ||
+           compilerClass.equals("edu.rice.cs.drjava.model.compiler.JSR14v20Compiler")) &&
+          collectionsPath != FileOption.NULL_FILE) {
+        _realCompiler.addToBootClassPath( collectionsPath );
+      }
+
       //DrJava.consoleErr().println("real compiler: " + _realCompiler + " this: " + this);
     }
     catch (Throwable t) {
-      // don't do anything. realCompiler stays null.
-      //DrJava.consoleErr().println("loadClass fails: " + t);
-      //t.printStackTrace(DrJava.consoleErr());
+
+        // don't do anything. realCompiler stays null.
+        //DrJava.consoleErr().println("loadClass fails: " + t);
+        //t.printStackTrace(DrJava.consoleErr());
     }
   }
 
@@ -115,10 +146,34 @@ public class CompilerProxy implements CompilerInterface {
    * length array (not null).
    */
   public CompilerError[] compile(File sourceRoot, File[] files) {
+    _recreateCompiler();
+    //DrJava.consoleOut().println("realCompiler is " + _realCompiler.getClass());
+    CompilerError[] ret =  _realCompiler.compile(sourceRoot, files);
+
+    return ret;
+  }
+
+  /**
+   * Compile the given files.
+   * @param files Source files to compile.
+   * @param sourceRoots Array of source root directories, the base of
+   *  the package structure for all files to compile.
+   *
+   * @return Array of errors that occurred. If no errors, should be zero
+   * length array (not null).
+   */
+  public CompilerError[] compile(File[] sourceRoots, File[] files) {
     //DrJava.consoleErr().println("proxy to compile: " + files[0]);
 
-    CompilerError[] ret =  _realCompiler.compile(sourceRoot, files);
+    /*DrJava.consoleOut().println("-- In CompilerProxy: SourceRoots:");
+    for (int i = 0 ; i < sourceRoots.length; i ++) {
+      DrJava.consoleOut().println(sourceRoots[i]);
+    }*/
+
     _recreateCompiler();
+    //DrJava.consoleOut().println("realCompiler is " + _realCompiler.getClass());
+    CompilerError[] ret =  _realCompiler.compile(sourceRoots, files);
+
     return ret;
   }
 
@@ -154,7 +209,29 @@ public class CompilerProxy implements CompilerInterface {
   public String toString() {
     return getName();
   }
+
+  /**
+   * Allows us to set the extra classpath for the compilers without referencing the
+   * config object in a loaded class file
+   */
+  public void setExtraClassPath( String extraClassPath) {
+    _realCompiler.setExtraClassPath(extraClassPath);
+  }
+
+  /**
+   * Sets whether to allow assertions in Java 1.4.
+   */
+  public void setAllowAssertions(boolean allow) {
+    _realCompiler.setAllowAssertions(allow);
+  }
+
+  /**
+   * This method allows us to set the JSR14 collections path across a class loader.
+   * (cannot cast a loaded class to a subclass, so all compiler interfaces must have this method)
+   */
+  public void addToBootClassPath( File cp) {
+    _realCompiler.addToBootClassPath(cp);
+  }
+
+
 }
-
-
-

@@ -4,7 +4,7 @@
  * at http://sourceforge.net/projects/drjava
  *
  * Copyright (C) 2001-2002 JavaPLT group at Rice University (javaplt@rice.edu)
- * 
+ *
  * DrJava is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -55,18 +55,33 @@ import edu.rice.cs.drjava.DrJava;
  * implementations. Later, the list of these registered compilers (but only
  * those that successfully loaded) can be retrieved.
  *
- * @version $Id: CompilerRegistry.java,v 1.9 2002/03/14 02:30:41 eallen Exp $
+ * @version $Id: CompilerRegistry.java,v 1.17 2003/06/28 04:33:16 centgraf Exp $
  */
 public class CompilerRegistry {
   /**
    * The list of compiler interfaces that are distributed with DrJava.
    */
   public static final String[] DEFAULT_COMPILERS = {
+    "edu.rice.cs.drjava.model.compiler.JSR14v20FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.JSR14v12FromSetLocation",
     "edu.rice.cs.drjava.model.compiler.JSR14FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.Javac141FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.Javac141FromClasspath",
+    "edu.rice.cs.drjava.model.compiler.Javac141FromToolsJar",
     "edu.rice.cs.drjava.model.compiler.JavacFromSetLocation",
     "edu.rice.cs.drjava.model.compiler.JavacFromClasspath",
     "edu.rice.cs.drjava.model.compiler.JavacFromToolsJar",
     "edu.rice.cs.drjava.model.compiler.GJv6FromClasspath",
+  };
+
+  /**
+   * A subset of DEFAULT_COMPILERS which support Generic Java.
+   */
+  public static final String[] GENERIC_JAVA_COMPILERS = {
+    "edu.rice.cs.drjava.model.compiler.JSR14v20FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.JSR14v12FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.JSR14FromSetLocation",
+    "edu.rice.cs.drjava.model.compiler.GJv6FromClasspath"
   };
 
   /** Singleton instance. */
@@ -76,7 +91,7 @@ public class CompilerRegistry {
   private ClassLoader _baseClassLoader;
 
   /** Linked list of class names of registered compilers. */
-  private LinkedList _registeredCompilers = new LinkedList();
+  private LinkedList<String> _registeredCompilers = new LinkedList<String>();
 
   /** The active compiler. Must never be null. */
   private CompilerInterface _activeCompiler = NoCompilerAvailable.ONLY;
@@ -126,20 +141,21 @@ public class CompilerRegistry {
    * {@link NoCompilerAvailable}.
    */
   public CompilerInterface[] getAvailableCompilers() {
-    LinkedList availableCompilers = new LinkedList();
+    LinkedList<CompilerInterface> availableCompilers =
+      new LinkedList<CompilerInterface>();
     ListIterator itor = _registeredCompilers.listIterator();
 
     while (itor.hasNext()) {
       String name = (String) itor.next();
-      //System.err.print("compiler " + name + " check: ");
+      //DrJava.consoleOut().print("REGISTRY:  Checking compiler: " + name + ": ");
 
       try {
         CompilerInterface compiler = _instantiateCompiler(name);
         if (compiler.isAvailable()) {
-          //System.err.println("ok.");
+          //DrJava.consoleOut().println("ok.");
 
           // can't use getActiveCompiler() because it will call back to
-          // getAvailableCompiler, forming an infinite recursion!!
+          // getAvailableCompilers, forming an infinite recursion!!
           if (_activeCompiler == NoCompilerAvailable.ONLY) {
             //System.err.println("\tset to active.");
             _activeCompiler = compiler;
@@ -148,13 +164,13 @@ public class CompilerRegistry {
           availableCompilers.add(compiler);
         }
         else {
-          //System.err.println("! .isAvailable.");
+          //DrJava.consoleOut().println("not available.");
         }
       }
       catch (Throwable t) {
         // This compiler didn't load. Keep on going.
-        //System.err.println("failed to load:");
-        //t.printStackTrace();
+        //DrJava.consoleOut().println("failed to load:");
+        //t.printStackTrace(DrJava.consoleOut());
         //System.err.println();
       }
     }
@@ -174,12 +190,19 @@ public class CompilerRegistry {
   /**
    * Sets which compiler is the "active" compiler.
    *
-   * @param compiler Compiler to set active.
+   * @param compiler Compiler to set active.  Cannot be null.
+   * @throws IllegalArgumentException if compiler is null.
    *
    * @see #getActiveCompiler
    */
   public void setActiveCompiler(CompilerInterface compiler) {
-    _activeCompiler = compiler;
+    if (compiler == null) {
+      // Can't let active compiler be null
+      throw new IllegalArgumentException("Cannot set active compiler to null.");
+    }
+    else {
+      _activeCompiler = compiler;
+    }
   }
 
   /**
@@ -204,6 +227,7 @@ public class CompilerRegistry {
       return NoCompilerAvailable.ONLY;
     }
   }
+
 
   private void _registerDefaultCompilers() {
     for (int i = 0; i < DEFAULT_COMPILERS.length; i++) {
@@ -264,24 +288,8 @@ public class CompilerRegistry {
       return (CompilerInterface) val;
     }
     catch (Throwable t) {
+      //t.printStackTrace(DrJava.consoleErr());
       return (CompilerInterface) clazz.newInstance();
-    }
-  }
-
-  /** Returns reasonable location guesses for tools jar file. */
-  private static URL[] _getToolsJarURLs() {
-    File home = new File(System.getProperty("java.home"));
-    File libDir = new File(home, "lib");
-    File libDir2 = new File(home.getParentFile(), "lib");
-
-    try {
-      return new URL[] {
-        new File(libDir, "tools.jar").toURL(),
-        new File(libDir2, "tools.jar").toURL()
-      };
-    }
-    catch (MalformedURLException e) {
-      return new URL[0];
     }
   }
 }
